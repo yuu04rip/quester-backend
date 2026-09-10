@@ -92,30 +92,75 @@ app.get('/api/leaderboard', async (req, res) => {
     }
 });
 
+// Endpoint per scaricare tutti i dati dell'utente dal cloud (Profilo + Missioni + Subtasks)
+app.get('/api/user/:userId/data', async (req, res) => {
+    const userId = req.params.userId;
+
+    try {
+        const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Utente non trovato sul cloud' });
+        }
+        const user = userResult.rows[0];
+
+        const missionsResult = await pool.query('SELECT * FROM missions WHERE user_id = $1', [userId]);
+        const missions = missionsResult.rows;
+
+        const missionsWithSubtasks = [];
+        for (const mission of missions) {
+            const subtasksResult = await pool.query('SELECT * FROM subtasks WHERE mission_id = $1', [mission.id]);
+            missionsWithSubtasks.push({
+                ...mission,
+                subtasks: subtasksResult.rows
+            });
+        }
+
+        res.json({
+            user: user,
+            missions: missionsWithSubtasks
+        });
+    } catch (err) {
+        console.error("Errore durante il recupero dei dati utente:", err);
+        res.status(500).json({ error: 'Errore interno del server' });
+    }
+});
+
 // Endpoint per sincronizzare i dati dell'utente (profilo e progressi) con Auto-Upsert
 app.post('/api/sync/:userId', async (req, res) => {
     const userId = req.params.userId;
     const { username, xpTotale, livello, coins, equippedHat, equippedWeapon, equippedFrame } = req.body;
 
     try {
-        // Tentativo di aggiornamento dell'utente esistente
-        const updateResult = await pool.query(
-            `UPDATE users SET xp_totale = $1, livello = $2, coins = $3, equipped_hat = $4, equipped_weapon = $5, equipped_frame = $6 WHERE id = $7`,
-            [xpTotale, livello, coins, equippedHat, equippedWeapon, equippedFrame, userId]
-        );
+        const queryText = `
+            INSERT INTO users (id, username, email, password_hash, xp_totale, livello, coins, equipped_hat, equipped_weapon, equipped_frame)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id)
+            DO UPDATE SET
+                xp_totale = EXCLUDED.xp_totale,
+                livello = EXCLUDED.livello,
+                coins = EXCLUDED.coins,
+                equipped_hat = EXCLUDED.equipped_hat,
+                equipped_weapon = EXCLUDED.equipped_weapon,
+                equipped_frame = EXCLUDED.equipped_frame;
+        `;
 
-        // Se l'utente non esiste nel database cloud, lo inseriamo al volo
-        if (updateResult.rowCount === 0) {
-            const safeUsername = username || `Hero_${userId}`;
-            await pool.query(
-                `INSERT INTO users (id, username, email, password_hash, xp_totale, livello, coins, equipped_hat, equipped_weapon, equipped_frame) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                 ON CONFLICT (id) DO UPDATE SET xp_totale = $5, livello = $6, coins = $7, equipped_hat = $8, equipped_weapon = $9, equipped_frame = $10`,
-                [userId, safeUsername, `${safeUsername.toLowerCase()}@quester.app`, 'oauth_placeholder', xpTotale, livello, coins, equippedHat, equippedWeapon, equippedFrame]
-            );
-        }
+        const safeUsername = username || `Hero_${userId}`;
+        const safeEmail = `${safeUsername.toLowerCase()}_${userId}@quester.app`;
 
-        console.log(`[SYNC] Utente ${userId} (${username || 'Unknown'}) sincronizzato con successo!`);
+        await pool.query(queryText, [
+            userId,
+            safeUsername,
+            safeEmail,
+            'oauth_placeholder',
+            xpTotale || 0,
+            livello || 1,
+            coins || 0,
+            equippedHat || 'NONE',
+            equippedWeapon || 'NONE',
+            equippedFrame || 'NONE'
+        ]);
+
+        console.log(`[SYNC] Utente ${userId} (${safeUsername}) sincronizzato con successo!`);
         res.json({ success: true, message: 'Dati sincronizzati con successo' });
     } catch (err) {
         console.error("Errore durante la sincronizzazione dell'utente:", err);
