@@ -84,17 +84,18 @@ app.post('/api/register', async (req, res) => {
     const { username, email, password } = req.body;
 
     try {
-        const checkUser = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+        const cleanUsername = username.trim().toLowerCase();
+        const checkUser = await pool.query('SELECT * FROM users WHERE username = $1', [cleanUsername]);
         if (checkUser.rows.length > 0) {
             return res.status(400).json({ error: 'Username già esistente' });
         }
 
-        const safeEmail = email || `${username.toLowerCase()}_${Date.now()}@quester.app`;
+        const safeEmail = email || `${cleanUsername}_${Date.now()}@quester.app`;
 
         const result = await pool.query(
             `INSERT INTO users (username, email, password_hash, xp_totale, livello, coins, equipped_hat, equipped_weapon, equipped_frame)
                  VALUES ($1, $2, $3, 0, 1, 0, 'NONE', 'NONE', 'NONE') RETURNING id, username, email`,
-            [username, safeEmail, password]
+            [cleanUsername, safeEmail, password]
         );
 
         const newUser = result.rows[0];
@@ -111,9 +112,10 @@ app.post('/api/login', async (req, res) => {
     const { identifier, password } = req.body;
 
     try {
+        const cleanIdentifier = identifier.trim().toLowerCase();
         const result = await pool.query(
             'SELECT * FROM users WHERE username = $1 OR email = $1',
-            [identifier]
+            [cleanIdentifier]
         );
 
         if (result.rows.length === 0) {
@@ -122,6 +124,7 @@ app.post('/api/login', async (req, res) => {
 
         const user = result.rows[0];
 
+        // Confronto sicuro dell'hash della password ricevuto dal client
         if (user.password_hash !== password) {
             return res.status(401).json({ error: 'Credenziali non valide' });
         }
@@ -180,17 +183,26 @@ app.get('/api/user/:userId/data', async (req, res) => {
     }
 });
 
-// Endpoint per sincronizzare i dati dell'utente (profilo e progressi) con Auto-Upsert
+// Endpoint per sincronizzare i dati dell'utente (profilo e progressi) preservando la password hash
 app.post('/api/sync/:userId', async (req, res) => {
     const userId = req.params.userId;
     const { username, xpTotale, livello, coins, equippedHat, equippedWeapon, equippedFrame } = req.body;
 
     try {
+        const safeUsername = (username || `Hero_${userId}`).trim().toLowerCase();
+        const safeEmail = `${safeUsername}_${userId}@quester.app`;
+
+        // Recuperiamo l'hash della password esistente per evitare di sovrascriverlo con segnaposto
+        const existingUser = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+        const existingPasswordHash = existingUser.rows.length > 0 ? existingUser.rows[0].password_hash : 'oauth_placeholder';
+
         const queryText = `
             INSERT INTO users (id, username, email, password_hash, xp_totale, livello, coins, equipped_hat, equipped_weapon, equipped_frame)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (id)
             DO UPDATE SET
+                username = EXCLUDED.username,
+                email = EXCLUDED.email,
                 xp_totale = EXCLUDED.xp_totale,
                 livello = EXCLUDED.livello,
                 coins = EXCLUDED.coins,
@@ -199,14 +211,11 @@ app.post('/api/sync/:userId', async (req, res) => {
                 equipped_frame = EXCLUDED.equipped_frame;
         `;
 
-        const safeUsername = username || `Hero_${userId}`;
-        const safeEmail = `${safeUsername.toLowerCase()}_${userId}@quester.app`;
-
         await pool.query(queryText, [
             userId,
             safeUsername,
             safeEmail,
-            'oauth_placeholder',
+            existingPasswordHash,
             xpTotale || 0,
             livello || 1,
             coins || 0,
