@@ -1,4 +1,4 @@
-// server.js (Backend Render - VERSIONE COMPLETA 2.2 con Shop Items Inseriti)
+// server.js (Backend Render - VERSIONE COMPLETA 2.3 con Catalogo Shop Aggiornato)
 const express = require('express');
 const { Pool } = require('pg');
 const app = express();
@@ -69,15 +69,33 @@ async function initDatabase() {
     try {
         await pool.query(queryText);
 
-        // Popolamento dei prodotti dello shop per evitare errori di Foreign Key
-        await pool.query(`
-            INSERT INTO shop_items (item_id, name, price, description, icon_name) VALUES 
-            ('hat_mago', 'Cappello da Mago', 100, 'Un cappello magico', 'hat'),
-            ('frame_scifi', 'Cornice Sci-Fi', 250, 'Cornice futuristica', 'frame')
-            ON CONFLICT (item_id) DO NOTHING;
-        `);
+        // Popolamento e aggiornamento automatico del catalogo shop completo
+        const shopItemsQuery = `
+            INSERT INTO shop_items (item_id, name, price, description, icon_name, icon_scale)
+            VALUES 
+            ('frame_mago', 'Cornice del Mago', 30, 'Cornice con rune magiche', 'ic_frame_mago', 1.0),
+            ('frame_cavaliere', 'Cornice del Cavaliere', 30, 'Cornice con spade incrociate', 'ic_frame_cavaliere', 1.0),
+            ('frame_scifi', 'Cornice Sci-Fi', 30, 'Cornice con circuiti luminosi', 'ic_frame_scifi', 1.0),
+            ('hat_mago', 'Cappello del Mago', 100, 'Cappello a punta magico', 'ic_char_wizard', 1.0),
+            ('staff_mago', 'Bastone del Mago', 100, 'Bastone con gemma magica', 'ic_char_weapon_staff', 1.0),
+            ('gun_spaziale', 'Space Pistol', 100, 'High-tech laser pistol', 'ic_gun_spaziale', 1.0),
+            ('sword_cavaliere', 'Spada del Cavaliere', 100, 'Spada luminosa d\'acciaio', 'ic_char_weapon_blade', 1.0),
+            ('hat_cavaliere', 'Elmo del Cavaliere', 100, 'Elmo con visiera protettiva', 'ic_char_helm', 1.0),
+            ('visor_futuristico', 'Visore Futuristico', 100, 'Visore high-tech HUD', 'ic_visor_futuristico', 1.0),
+            ('theme_arcade', 'Tema Arcade', 500, 'Stile retrò pixel art', 'ic_theme_arcade', 1.0),
+            ('theme_fantasy', 'Tema Bacheca Fantasy', 500, 'Stile pergamena antica', 'ic_dragon', 1.0),
+            ('reward_corona', 'Corona dell\'Eroe', 0, 'Riservata ai Campioni!', 'ic_crown', 1.0),
+            ('reward_tema_regale', 'Tema Regale', 0, 'Tema esclusivo Livello 50', 'ic_throne', 1.0)
+            ON CONFLICT (item_id) DO UPDATE SET 
+                name = EXCLUDED.name, 
+                price = EXCLUDED.price, 
+                description = EXCLUDED.description,
+                icon_name = EXCLUDED.icon_name,
+                icon_scale = EXCLUDED.icon_scale;
+        `;
+        await pool.query(shopItemsQuery);
 
-        console.log("Database Quester V2 Pronto con Shop Items!");
+        console.log("Database Quester V2 Pronto con Catalogo Shop Completo!");
     } catch (err) {
         console.error("Errore init DB:", err);
     }
