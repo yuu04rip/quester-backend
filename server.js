@@ -1,10 +1,12 @@
+// server.js (Backend Node.js per Render)
+
 const express = require('express');
 const { Pool } = require('pg');
 const app = express();
 
 app.use(express.json());
 
-// Connessione a PostgreSQL (Render fornirà l'URL tramite la variabile d'ambiente DATABASE_URL)
+// Connessione a PostgreSQL
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
@@ -74,7 +76,7 @@ async function initDatabase() {
     }
 }
 
-// Rotta di test per verificare che il server sia online
+// Rotta di test
 app.get('/', (req, res) => {
     res.send('Quester Backend is online and ready for action, Hero!');
 });
@@ -124,7 +126,6 @@ app.post('/api/login', async (req, res) => {
 
         const user = result.rows[0];
 
-        // Confronto sicuro dell'hash della password ricevuto dal client
         if (user.password_hash !== password) {
             return res.status(401).json({ error: 'Credenziali non valide' });
         }
@@ -137,7 +138,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Endpoint per la Classifica Globale (Leaderboard) basata sul livello e XP
+// Endpoint per la Classifica Globale
 app.get('/api/leaderboard', async (req, res) => {
     try {
         const result = await pool.query(
@@ -150,7 +151,7 @@ app.get('/api/leaderboard', async (req, res) => {
     }
 });
 
-// Endpoint per scaricare tutti i dati dell'utente dal cloud (Profilo + Missioni + Subtasks)
+// Endpoint per scaricare tutti i dati dell'utente (Profilo + Missioni + Subtasks)
 app.get('/api/user/:userId/data', async (req, res) => {
     const userId = req.params.userId;
 
@@ -183,7 +184,7 @@ app.get('/api/user/:userId/data', async (req, res) => {
     }
 });
 
-// Endpoint per sincronizzare i dati dell'utente (profilo e progressi) preservando la password hash
+// Endpoint per sincronizzare i dati dell'utente
 app.post('/api/sync/:userId', async (req, res) => {
     const userId = req.params.userId;
     const { username, xpTotale, livello, coins, equippedHat, equippedWeapon, equippedFrame } = req.body;
@@ -192,7 +193,6 @@ app.post('/api/sync/:userId', async (req, res) => {
         const safeUsername = (username || `Hero_${userId}`).trim().toLowerCase();
         const safeEmail = `${safeUsername}_${userId}@quester.app`;
 
-        // Recuperiamo l'hash della password esistente per evitare di sovrascriverlo con segnaposto
         const existingUser = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
         const existingPasswordHash = existingUser.rows.length > 0 ? existingUser.rows[0].password_hash : 'oauth_placeholder';
 
@@ -229,6 +229,55 @@ app.post('/api/sync/:userId', async (req, res) => {
     } catch (err) {
         console.error("Errore durante la sincronizzazione dell'utente:", err);
         res.status(500).json({ error: 'Errore durante la sincronizzazione', details: err.message });
+    }
+});
+
+// Endpoint per sincronizzare una singola missione e relativi subtasks
+app.post('/api/sync/mission/:userId', async (req, res) => {
+    const userId = req.params.userId;
+    const { id, title, description, type, due_date, xp_reward, completed, xp_awarded, redeemed, created_at, completed_at, verification_level, is_pinned, subtasks } = req.body;
+
+    try {
+        const missionQuery = `
+            INSERT INTO missions (id, user_id, title, description, type, due_date, xp_reward, completed, xp_awarded, redeemed, created_at, completed_at, verification_level, is_pinned)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            ON CONFLICT (id)
+            DO UPDATE SET
+                title = EXCLUDED.title,
+                description = EXCLUDED.description,
+                type = EXCLUDED.type,
+                due_date = EXCLUDED.due_date,
+                xp_reward = EXCLUDED.xp_reward,
+                completed = EXCLUDED.completed,
+                xp_awarded = EXCLUDED.xp_awarded,
+                redeemed = EXCLUDED.redeemed,
+                completed_at = EXCLUDED.completed_at,
+                verification_level = EXCLUDED.verification_level,
+                is_pinned = EXCLUDED.is_pinned
+            RETURNING id;
+        `;
+
+        const missionResult = await pool.query(missionQuery, [
+            id, userId, title, description, type, due_date, xp_reward, completed, xp_awarded, redeemed, created_at, completed_at, verification_level, is_pinned
+        ]);
+
+        const missionId = missionResult.rows[0].id;
+
+        if (subtasks && Array.isArray(subtasks)) {
+            await pool.query('DELETE FROM subtasks WHERE mission_id = $1', [missionId]);
+
+            for (const sub of subtasks) {
+                await pool.query(
+                    `INSERT INTO subtasks (mission_id, text, done) VALUES ($1, $2, $3)`,
+                    [missionId, sub.text, sub.done]
+                );
+            }
+        }
+
+        res.json({ success: true, missionId });
+    } catch (err) {
+        console.error("Errore durante la sincronizzazione della missione:", err);
+        res.status(500).json({ error: 'Errore interno del server', details: err.message });
     }
 });
 
