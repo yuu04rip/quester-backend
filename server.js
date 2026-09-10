@@ -92,8 +92,8 @@ app.post('/api/register', async (req, res) => {
         const safeEmail = email || `${username.toLowerCase()}_${Date.now()}@quester.app`;
 
         const result = await pool.query(
-            `INSERT INTO users (username, email, password_hash, xp_totale, livello, coins, equipped_hat, equipped_weapon, equipped_frame) 
-             VALUES ($1, $2, $3, 0, 1, 0, 'NONE', 'NONE', 'NONE') RETURNING id, username, email`,
+            `INSERT INTO users (username, email, password_hash, xp_totale, livello, coins, equipped_hat, equipped_weapon, equipped_frame)
+                 VALUES ($1, $2, $3, 0, 1, 0, 'NONE', 'NONE', 'NONE') RETURNING id, username, email`,
             [username, safeEmail, password]
         );
 
