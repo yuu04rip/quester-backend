@@ -1,4 +1,4 @@
-// server.js (Backend Render - VERSIONE COMPLETA 2.1 con Shop Sync)
+// server.js (Backend Render - VERSIONE COMPLETA 2.2 con Shop Items Inseriti)
 const express = require('express');
 const { Pool } = require('pg');
 const app = express();
@@ -68,8 +68,19 @@ async function initDatabase() {
     `;
     try {
         await pool.query(queryText);
-        console.log("Database Quester V2 Pronto!");
-    } catch (err) { console.error("Errore init DB:", err); }
+
+        // Popolamento dei prodotti dello shop per evitare errori di Foreign Key
+        await pool.query(`
+            INSERT INTO shop_items (item_id, name, price, description, icon_name) VALUES 
+            ('hat_mago', 'Cappello da Mago', 100, 'Un cappello magico', 'hat'),
+            ('frame_scifi', 'Cornice Sci-Fi', 250, 'Cornice futuristica', 'frame')
+            ON CONFLICT (item_id) DO NOTHING;
+        `);
+
+        console.log("Database Quester V2 Pronto con Shop Items!");
+    } catch (err) {
+        console.error("Errore init DB:", err);
+    }
 }
 
 app.get('/', (req, res) => {
