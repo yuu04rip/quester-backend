@@ -79,6 +79,61 @@ app.get('/', (req, res) => {
     res.send('Quester Backend is online and ready for action, Hero!');
 });
 
+// Endpoint per la Registrazione
+app.post('/api/register', async (req, res) => {
+    const { username, email, password } = req.body;
+
+    try {
+        const checkUser = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+        if (checkUser.rows.length > 0) {
+            return res.status(400).json({ error: 'Username già esistente' });
+        }
+
+        const safeEmail = email || `${username.toLowerCase()}_${Date.now()}@quester.app`;
+
+        const result = await pool.query(
+            `INSERT INTO users (username, email, password_hash, xp_totale, livello, coins, equipped_hat, equipped_weapon, equipped_frame) 
+             VALUES ($1, $2, $3, 0, 1, 0, 'NONE', 'NONE', 'NONE') RETURNING id, username, email`,
+            [username, safeEmail, password]
+        );
+
+        const newUser = result.rows[0];
+        console.log(`[REGISTER] Nuovo eroe registrato: ${newUser.username} (ID: ${newUser.id})`);
+        res.json({ success: true, user: newUser });
+    } catch (err) {
+        console.error("Errore durante la registrazione:", err);
+        res.status(500).json({ error: 'Errore interno del server', details: err.message });
+    }
+});
+
+// Endpoint per il Login
+app.post('/api/login', async (req, res) => {
+    const { identifier, password } = req.body;
+
+    try {
+        const result = await pool.query(
+            'SELECT * FROM users WHERE username = $1 OR email = $1',
+            [identifier]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(401).json({ error: 'Credenziali non valide' });
+        }
+
+        const user = result.rows[0];
+
+        if (user.password_hash !== password) {
+            return res.status(401).json({ error: 'Credenziali non valide' });
+        }
+
+        console.log(`[LOGIN] Eroe rientrato nel regno: ${user.username} (ID: ${user.id})`);
+        res.json({ success: true, user: user });
+    } catch (err) {
+        console.error("Errore durante il login:", err);
+        res.status(500).json({ error: 'Errore interno del server', details: err.message });
+    }
+});
+
 // Endpoint per la Classifica Globale (Leaderboard) basata sul livello e XP
 app.get('/api/leaderboard', async (req, res) => {
     try {
