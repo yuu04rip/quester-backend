@@ -1,4 +1,4 @@
-// server.js (Backend Render - VERSIONE COMPLETA 2.3 con Catalogo Shop Aggiornato)
+// server.js (Backend Render - VERSIONE FINALE 2.4 con Deletion Support e Catalogo Shop)
 const express = require('express');
 const { Pool } = require('pg');
 const app = express();
@@ -72,20 +72,20 @@ async function initDatabase() {
         // Popolamento e aggiornamento automatico del catalogo shop completo
         const shopItemsQuery = `
             INSERT INTO shop_items (item_id, name, price, description, icon_name, icon_scale)
-            VALUES 
-            ('frame_mago', 'Cornice del Mago', 30, 'Cornice con rune magiche', 'ic_frame_mago', 1.0),
-            ('frame_cavaliere', 'Cornice del Cavaliere', 30, 'Cornice con spade incrociate', 'ic_frame_cavaliere', 1.0),
-            ('frame_scifi', 'Cornice Sci-Fi', 30, 'Cornice con circuiti luminosi', 'ic_frame_scifi', 1.0),
-            ('hat_mago', 'Cappello del Mago', 100, 'Cappello a punta magico', 'ic_char_wizard', 1.0),
-            ('staff_mago', 'Bastone del Mago', 100, 'Bastone con gemma magica', 'ic_char_weapon_staff', 1.0),
-            ('gun_spaziale', 'Space Pistol', 100, 'High-tech laser pistol', 'ic_gun_spaziale', 1.0),
-            ('sword_cavaliere', 'Spada del Cavaliere', 100, 'Spada luminosa d\'acciaio', 'ic_char_weapon_blade', 1.0),
-            ('hat_cavaliere', 'Elmo del Cavaliere', 100, 'Elmo con visiera protettiva', 'ic_char_helm', 1.0),
-            ('visor_futuristico', 'Visore Futuristico', 100, 'Visore high-tech HUD', 'ic_visor_futuristico', 1.0),
-            ('theme_arcade', 'Tema Arcade', 500, 'Stile retrò pixel art', 'ic_theme_arcade', 1.0),
-            ('theme_fantasy', 'Tema Bacheca Fantasy', 500, 'Stile pergamena antica', 'ic_dragon', 1.0),
-            ('reward_corona', 'Corona dell\'Eroe', 0, 'Riservata ai Campioni!', 'ic_crown', 1.0),
-            ('reward_tema_regale', 'Tema Regale', 0, 'Tema esclusivo Livello 50', 'ic_throne', 1.0)
+            VALUES
+                ('frame_mago', 'Cornice del Mago', 30, 'Cornice con rune magiche', 'ic_frame_mago', 1.0),
+                ('frame_cavaliere', 'Cornice del Cavaliere', 30, 'Cornice con spade incrociate', 'ic_frame_cavaliere', 1.0),
+                ('frame_scifi', 'Cornice Sci-Fi', 30, 'Cornice con circuiti luminosi', 'ic_frame_scifi', 1.0),
+                ('hat_mago', 'Cappello del Mago', 100, 'Cappello a punta magico', 'ic_char_wizard', 1.0),
+                ('staff_mago', 'Bastone del Mago', 100, 'Bastone con gemma magica', 'ic_char_weapon_staff', 1.0),
+                ('gun_spaziale', 'Space Pistol', 100, 'High-tech laser pistol', 'ic_gun_spaziale', 1.0),
+                ('sword_cavaliere', 'Spada del Cavaliere', 100, 'Spada luminosa d''acciaio', 'ic_char_weapon_blade', 1.0),
+                ('hat_cavaliere', 'Elmo del Cavaliere', 100, 'Elmo con visiera protettiva', 'ic_char_helm', 1.0),
+                ('visor_futuristico', 'Visore Futuristico', 100, 'Visore high-tech HUD', 'ic_visor_futuristico', 1.0),
+                ('theme_arcade', 'Tema Arcade', 500, 'Stile retrò pixel art', 'ic_theme_arcade', 1.0),
+                ('theme_fantasy', 'Tema Bacheca Fantasy', 500, 'Stile pergamena antica', 'ic_dragon', 1.0),
+                ('reward_corona', 'Corona dell''Eroe', 0, 'Riservata ai Campioni!', 'ic_crown', 1.0),
+                ('reward_tema_regale', 'Tema Regale', 0, 'Tema esclusivo Livello 50', 'ic_throne', 1.0)
             ON CONFLICT (item_id) DO UPDATE SET 
                 name = EXCLUDED.name, 
                 price = EXCLUDED.price, 
@@ -95,14 +95,14 @@ async function initDatabase() {
         `;
         await pool.query(shopItemsQuery);
 
-        console.log("Database Quester V2 Pronto con Catalogo Shop Completo!");
+        console.log("Database Quester V2.4 Pronto con Catalogo Shop e Deletion Support!");
     } catch (err) {
         console.error("Errore init DB:", err);
     }
 }
 
 app.get('/', (req, res) => {
-    res.send('Quester Backend V2 is online!');
+    res.send('Quester Backend V2.4 is online!');
 });
 
 app.post('/api/register', async (req, res) => {
@@ -268,8 +268,28 @@ app.get('/api/user/:userId/data', async (req, res) => {
     }
 });
 
+// --- ENDPOINT ELIMINAZIONE ---
+
+app.delete('/api/mission/:missionId', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM missions WHERE id = $1', [req.params.missionId]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/user/:userId', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM users WHERE id = $1', [req.params.userId]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, async () => {
     await initDatabase();
-    console.log(`Hero Backend V2 on port ${PORT}`);
+    console.log(`Hero Backend V2.4 on port ${PORT}`);
 });
